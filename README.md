@@ -22,18 +22,21 @@ This project was developed to explore foundational cybersecurity concepts, URL a
 
 ## Features
 
-- HTTPS validation
+Modern dark-themed desktop GUI (Tkinter)
+- HTTPS detection
 - Suspicious keyword detection
 - IP address URL detection
-- Long URL identification
-- Clear security assessment reporting
-- Lightweight and easy to use
+- Long URL detection
+- Color-coded scan results
+- Fast local analysis
+- Simple and user-friendly interface
 
 ## Technologies Used
 
 - Python 3
 - urllib.parse
 - Regular Expressions (re)
+- Tkinter
 
 ## How It Works
 
@@ -95,9 +98,11 @@ The screenshot below shows LinkGuard successfully analyzing a URL and generating
 - Risk scoring system
 - URL shortening detection
 - Domain reputation analysis
-- Security API integration
-- Graphical user interface (GUI)
+- VirusTotal API integration
+- Google Safe Browsing integration
 - Exportable scan reports
+- Scan history
+- Custom detection rules
 
 ## Disclaimer
 
