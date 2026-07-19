@@ -1,1 +1,200 @@
-h
+"""
+LinkGuard - URL Safety Checker (GUI version)
+Author: Boledi
+
+An educational cybersecurity tool that scans a URL for common red flags.
+Disclaimer: This is for learning/demo purposes, not a replacement for
+professional threat intelligence platforms.
+"""
+
+import tkinter as tk
+from tkinter import font as tkfont
+from urllib.parse import urlparse
+import re
+
+
+# ---------- Core checking logic (unchanged from original script) ----------
+
+SUSPICIOUS_WORDS = [
+    "login",
+    "verify",
+    "password",
+    "winner",
+    "claim",
+    "free-money",
+]
+
+
+def check_url(url):
+    """Run all LinkGuard checks on a URL and return a list of warning strings."""
+    warnings = []
+
+    if not url.startswith("https://"):
+        warnings.append("❌ Not using HTTPS")
+
+    for word in SUSPICIOUS_WORDS:
+        if word in url.lower():
+            warnings.append(f"⚠️ Suspicious keyword: {word}")
+
+    domain = urlparse(url).netloc
+
+    if re.match(r"^\d+\.\d+\.\d+\.\d+$", domain):
+        warnings.append("⚠️ Uses an IP address instead of a domain")
+
+    if len(url) > 75:
+        warnings.append("⚠️ URL is unusually long")
+
+    return warnings
+
+
+# ---------- GUI ----------
+
+class LinkGuardApp:
+    def __init__(self, root):
+        self.root = root
+        root.title("LinkGuard - URL Safety Checker")
+        root.geometry("520x480")
+        root.minsize(460, 420)
+        root.configure(bg="#0d1117")
+
+        # Fonts
+        self.title_font = tkfont.Font(family="Segoe UI", size=18, weight="bold")
+        self.label_font = tkfont.Font(family="Segoe UI", size=10)
+        self.mono_font = tkfont.Font(family="Consolas", size=11)
+        self.button_font = tkfont.Font(family="Segoe UI", size=11, weight="bold")
+
+        # ----- Header -----
+        header = tk.Frame(root, bg="#0d1117")
+        header.pack(fill="x", padx=20, pady=(20, 10))
+
+        tk.Label(
+            header,
+            text="🔗 LinkGuard",
+            font=self.title_font,
+            fg="#58a6ff",
+            bg="#0d1117",
+        ).pack(anchor="w")
+
+        tk.Label(
+            header,
+            text="Paste a URL below to scan it for common red flags.",
+            font=self.label_font,
+            fg="#8b949e",
+            bg="#0d1117",
+        ).pack(anchor="w", pady=(2, 0))
+
+        # ----- Input row -----
+        input_frame = tk.Frame(root, bg="#0d1117")
+        input_frame.pack(fill="x", padx=20, pady=(10, 5))
+
+        self.url_entry = tk.Entry(
+            input_frame,
+            font=self.label_font,
+            bg="#161b22",
+            fg="#c9d1d9",
+            insertbackground="#c9d1d9",
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground="#30363d",
+            highlightcolor="#58a6ff",
+        )
+        self.url_entry.pack(side="left", fill="x", expand=True, ipady=8, padx=(0, 10))
+        self.url_entry.bind("<Return>", lambda event: self.scan_url())
+        self.url_entry.focus()
+
+        self.scan_button = tk.Button(
+            input_frame,
+            text="Scan",
+            font=self.button_font,
+            bg="#238636",
+            fg="white",
+            activebackground="#2ea043",
+            activeforeground="white",
+            relief="flat",
+            cursor="hand2",
+            padx=18,
+            command=self.scan_url,
+        )
+        self.scan_button.pack(side="right")
+
+        # ----- Results area -----
+        results_label = tk.Label(
+            root,
+            text="Report",
+            font=self.label_font,
+            fg="#8b949e",
+            bg="#0d1117",
+        )
+        results_label.pack(anchor="w", padx=20, pady=(15, 0))
+
+        results_frame = tk.Frame(root, bg="#161b22", highlightthickness=1,
+                                  highlightbackground="#30363d")
+        results_frame.pack(fill="both", expand=True, padx=20, pady=(5, 20))
+
+        self.results_text = tk.Text(
+            results_frame,
+            font=self.mono_font,
+            bg="#161b22",
+            fg="#c9d1d9",
+            relief="flat",
+            wrap="word",
+            padx=12,
+            pady=12,
+            state="disabled",
+            cursor="arrow",
+        )
+        self.results_text.pack(fill="both", expand=True)
+
+        # Tag colors for warning levels
+        self.results_text.tag_config("danger", foreground="#f85149")
+        self.results_text.tag_config("warn", foreground="#d29922")
+        self.results_text.tag_config("safe", foreground="#3fb950")
+        self.results_text.tag_config("muted", foreground="#8b949e")
+        self.results_text.tag_config("heading", foreground="#58a6ff",
+                                      font=tkfont.Font(family="Consolas", size=11, weight="bold"))
+
+        self._show_placeholder()
+
+    def _show_placeholder(self):
+        self._set_results([("Enter a URL above and click Scan to see results here.", "muted")])
+
+    def _set_results(self, lines):
+        """lines: list of (text, tag) tuples"""
+        self.results_text.configure(state="normal")
+        self.results_text.delete("1.0", "end")
+        for text, tag in lines:
+            self.results_text.insert("end", text + "\n", tag)
+        self.results_text.configure(state="disabled")
+
+    def scan_url(self):
+        url = self.url_entry.get().strip()
+
+        if not url:
+            self._set_results([("⚠️ Please enter a URL first.", "warn")])
+            return
+
+        warnings = check_url(url)
+
+        lines = [("===== LINKGUARD REPORT =====", "heading"), ("", "muted")]
+
+        if warnings:
+            for warning in warnings:
+                tag = "danger" if warning.startswith("❌") else "warn"
+                lines.append((warning, tag))
+        else:
+            lines.append(("✅ No obvious red flags detected", "safe"))
+
+        lines.append(("", "muted"))
+        lines.append(("============================", "heading"))
+
+        self._set_results(lines)
+
+
+def main():
+    root = tk.Tk()
+    app = LinkGuardApp(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
