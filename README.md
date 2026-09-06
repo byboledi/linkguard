@@ -1,119 +1,59 @@
-<h1 align="center">🔒 LinkGuard</h1>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.x-blue?logo=python">
-  <img src="https://img.shields.io/badge/Status-Active-success">
-  <img src="https://img.shields.io/badge/Security-URL%20Analysis-red">
-</p>
+# Linkguard
 
-<p align="center">
-A cybersecurity-oriented URL inspection tool that performs heuristic analysis to identify common phishing indicators and assess potential security risks associated with web links.
-</p>
+A URL safety scanner that checks links for malicious intent before you click them — combining multiple detection layers into a single risk score.
 
-# LinkGuard 🔒
+## Why I built this
 
-A cybersecurity-oriented URL inspection tool that performs heuristic analysis to identify common phishing indicators and assess potential security risks associated with web links.
-
-## Overview
-
-LinkGuard is a Python-based security tool that analyzes URLs using rule-based detection techniques. It evaluates several characteristics commonly associated with phishing attempts and suspicious websites, helping users identify potential risks before visiting a link.
-
-This project was developed to explore foundational cybersecurity concepts, URL analysis techniques, and secure software development practices.
+Most people click links without thinking twice, and shortened or disguised URLs make it easy to hide where a link actually leads. I wanted to build something that pulls together several real detection techniques — the kind actual browsers and security tools use — into one accessible tool, rather than relying on any single check.
 
 ## Features
 
-Modern dark-themed desktop GUI (Tkinter)
-- HTTPS detection
-- Suspicious keyword detection
-- IP address URL detection
-- Long URL detection
-- Color-coded scan results
-- Fast local analysis
-- Simple and user-friendly interface
+- **URL shortener detection** — flags when a link uses a known shortening service (bit.ly, tinyurl, etc.), since these hide the real destination
+- **Domain reputation heuristics** — flags structurally suspicious domains (unusual TLDs, excessive digits/hyphens, unusually long names)
+- **VirusTotal integration** — checks a URL against VirusTotal's aggregated results from dozens of security vendors
+- **Google Safe Browsing integration** — checks a URL against Google's live database of known malware and phishing sites
+- **Risk scoring system** — combines all signals into a single 0-100 score and a clear Low/Medium/High risk rating
+- **Custom detection rules** — lets you maintain your own banned domain and keyword lists
+- **Scan history** — keeps a local log of every scan performed
+- **Exportable reports** — generates a readable `.txt` report for any scan
 
-## Technologies Used
+## How the risk score works
 
-- Python 3
-- urllib.parse
-- Regular Expressions (re)
-- Tkinter
+Each detection layer contributes to a weighted score:
+- Shortened URLs add a baseline risk (they hide the destination, which is inherently a red flag)
+- Domain reputation flags each add incrementally
+- VirusTotal detections are weighted by how many vendors flagged the URL as malicious or suspicious
+- A Google Safe Browsing match adds a significant risk weight, since it's a direct match against a known threat database
+- Custom rule matches (your own banned domains/keywords) are weighted heavily, since they represent known, specific threats to you
 
-## How It Works
+Scores are capped at 100 and mapped to Low (0-24), Medium (25-59), or High (60-100) risk.
 
-LinkGuard analyzes a URL and performs a series of security checks, including:
-
-1. Verifying whether the URL uses HTTPS.
-2. Detecting keywords commonly found in phishing campaigns.
-3. Identifying URLs that use IP addresses instead of domain names.
-4. Flagging unusually long URLs that may be attempting to obscure malicious intent.
-
-The results are displayed in a concise security report.
-
-## Installation
-
-Clone the repository:
-
-```bash
-git clone https://github.com/byboledi/linkguard.git
-```
-
-Navigate to the project directory:
-
-```bash
-cd linkguard
-```
-
-Run the application:
+## Usage
 
 ```bash
 python linkguard.py
 ```
 
-## Example Usage
+Run it and choose from the menu: scan a URL, view scan history, export a report, or add a custom detection rule.
 
-Input:
+**API keys (optional but recommended):** VirusTotal and Google Safe Browsing checks require free API keys, added at the top of the script. Without them, Linkguard still runs fully using shortener detection, domain heuristics, and custom rules — it just skips those two checks gracefully.
 
-```text
-https://www.openai.com
-```
+## What I'd improve next
 
-Output:
+- Add a proper WHOIS-based domain age check (very new domains are a strong phishing signal)
+- Batch scanning — check a list of URLs at once instead of one at a time
+- A simple web interface instead of a CLI menu
+- Weight tuning based on real-world testing rather than initial estimates
 
-```text
-===== LINKGUARD REPORT =====
+## Tech stack
 
-✅ No obvious red flags detected
+Python, `requests`
 
-============================
-```
+## ⚠️ Note on ethical use
 
-## Demonstration
-
-The screenshot below shows LinkGuard successfully analyzing a URL and generating a security assessment report.
-
-![LinkGuard Demo](screenshots/linkguard-demo.jpg)
-
-## Future Enhancements
-
-- Risk scoring system
-- URL shortening detection
-- Domain reputation analysis
-- VirusTotal API integration
-- Google Safe Browsing integration
-- Exportable scan reports
-- Scan history
-- Custom detection rules
-
-## Disclaimer
-
-LinkGuard is an educational cybersecurity project intended for learning and demonstration purposes. It should not be considered a replacement for professional threat intelligence platforms or enterprise security solutions.
-
-## Author
-
-**Boledi**
-
-Aspiring software developer with an interest in cybersecurity, Python development, and security-focused applications.
+This tool checks publicly available threat intelligence data about URLs. It does not access, scrape, or store any private information about websites or their owners beyond what's already used for security screening.
 
 ---
 
-⭐ If you found this project interesting, consider starring the repository.
+Part of my ongoing work toward Cloud AI Architecture, focused on building practical, layered security tooling.
