@@ -1,0 +1,278 @@
+import requests
+import json
+import os
+import re
+import base64
+from datetime import datetime
+from urllib.parse import urlparse
+
+# ============ CONFIG — add your free API keys here ============
+VIRUSTOTAL_API_KEY = ""      # get free at virustotal.com/gui/join-us
+GOOGLE_SAFE_BROWSING_API_KEY = ""  # get free at console.cloud.google.com (enable Safe Browsing API)
+
+HISTORY_FILE = "scan_history.json"
+RULES_FILE = "custom_rules.json"
+
+# ============ FEATURE 1: URL Shortener Detection ============
+
+KNOWN_SHORTENERS = [
+    "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd",
+    "buff.ly", "rebrand.ly", "cutt.ly", "shorte.st", "adf.ly"
+]
+
+def is_shortened_url(domain):
+    return domain in KNOWN_SHORTENERS
+
+
+# ============ FEATURE 2: Domain Reputation Heuristics ============
+# (No paid WHOIS needed — flags suspicious structural patterns)
+
+SUSPICIOUS_TLDS = [".xyz", ".top", ".click", ".gq", ".tk", ".ml", ".cf"]
+
+def analyze_domain_reputation(domain):
+    flags = []
+    if any(domain.endswith(tld) for tld in SUSPICIOUS_TLDS):
+        flags.append("uses a commonly abused free/low-cost domain extension")
+    if sum(c.isdigit() for c in domain) > 4:
+        flags.append("contains an unusually high number of digits")
+    if domain.count("-") >= 3:
+        flags.append("contains an unusually high number of hyphens")
+    if len(domain) > 40:
+        flags.append("unusually long domain name")
+    return flags
+
+
+# ============ FEATURE 3: VirusTotal Integration ============
+
+def check_virustotal(url):
+    if not VIRUSTOTAL_API_KEY:
+        return None  # skipped, no key set
+
+    try:
+        url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
+        headers = {"x-apikey": VIRUSTOTAL_API_KEY}
+        resp = requests.get(
+            f"https://www.virustotal.com/api/v3/urls/{url_id}",
+            headers=headers, timeout=10
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            stats = data["data"]["attributes"]["last_analysis_stats"]
+            return stats  # dict: malicious, suspicious, harmless, undetected
+        elif resp.status_code == 404:
+            return {"malicious": 0, "suspicious": 0, "harmless": 0, "undetected": 0, "note": "not yet scanned by VirusTotal"}
+        else:
+            return {"error": f"VirusTotal returned status {resp.status_code}"}
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+
+# ============ FEATURE 4: Google Safe Browsing Integration ============
+
+def check_google_safe_browsing(url):
+    if not GOOGLE_SAFE_BROWSING_API_KEY:
+        return None  # skipped, no key set
+
+    endpoint = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={GOOGLE_SAFE_BROWSING_API_KEY}"
+    payload = {
+        "client": {"clientId": "linkguard", "clientVersion": "1.0"},
+        "threatInfo": {
+            "threatTypes": ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],
+            "platformTypes": ["ANY_PLATFORM"],
+            "threatEntryTypes": ["URL"],
+            "threatEntries": [{"url": url}]
+        }
+    }
+    try:
+        resp = requests.post(endpoint, json=payload, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("matches", [])
+        else:
+            return {"error": f"Google Safe Browsing returned status {resp.status_code}"}
+    except requests.RequestException as e:
+        return {"error": str(e)}
+
+
+# ============ FEATURE 8: Custom Detection Rules ============
+
+def load_custom_rules():
+    if os.path.exists(RULES_FILE):
+        with open(RULES_FILE, "r") as f:
+            return json.load(f)
+    return {"banned_domains": [], "banned_keywords": []}
+
+def check_custom_rules(url, domain, rules):
+    flags = []
+    if domain in rules.get("banned_domains", []):
+        flags.append(f"domain '{domain}' is on your custom banned list")
+    for keyword in rules.get("banned_keywords", []):
+        if keyword.lower() in url.lower():
+            flags.append(f"URL contains banned keyword '{keyword}'")
+    return flags
+
+def add_custom_rule():
+    rules = load_custom_rules()
+    print("1. Ban a domain  2. Ban a keyword")
+    choice = input("Choice: ").strip()
+    if choice == "1":
+        domain = input("Domain to ban (e.g. badsite.com): ").strip()
+        rules["banned_domains"].append(domain)
+    elif choice == "2":
+        keyword = input("Keyword to ban: ").strip()
+        rules["banned_keywords"].append(keyword)
+    with open(RULES_FILE, "w") as f:
+        json.dump(rules, f, indent=2)
+    print("Rule added.\n")
+
+
+# ============ FEATURE 5: Risk Scoring System ============
+
+def calculate_risk_score(shortened, rep_flags, vt_stats, gsb_matches, custom_flags):
+    score = 0
+    reasons = []
+
+    if shortened:
+        score += 15
+        reasons.append("URL uses a link shortener (hides real destination)")
+
+    score += len(rep_flags) * 10
+    reasons.extend(rep_flags)
+
+    if vt_stats and "malicious" in vt_stats:
+        malicious = vt_stats.get("malicious", 0)
+        suspicious = vt_stats.get("suspicious", 0)
+        if malicious > 0:
+            score += min(malicious * 15, 45)
+            reasons.append(f"flagged malicious by {malicious} security vendor(s) on VirusTotal")
+        if suspicious > 0:
+            score += min(suspicious * 5, 15)
+            reasons.append(f"flagged suspicious by {suspicious} vendor(s) on VirusTotal")
+
+    if gsb_matches:
+        score += 40
+        threat_types = [m.get("threatType", "unknown") for m in gsb_matches]
+        reasons.append(f"matched Google Safe Browsing threat list(s): {', '.join(set(threat_types))}")
+
+    if custom_flags:
+        score += len(custom_flags) * 20
+        reasons.extend(custom_flags)
+
+    score = min(score, 100)
+
+    if score >= 60:
+        level = "HIGH RISK"
+    elif score >= 25:
+        level = "MEDIUM RISK"
+    else:
+        level = "LOW RISK"
+
+    return score, level, reasons
+
+
+# ============ FEATURE 6 & 7: History + Export ============
+
+def save_to_history(result):
+    history = []
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as f:
+            history = json.load(f)
+    history.append(result)
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history, f, indent=2, default=str)
+
+def view_history():
+    if not os.path.exists(HISTORY_FILE):
+        print("No scan history yet.\n")
+        return
+    with open(HISTORY_FILE, "r") as f:
+        history = json.load(f)
+    print(f"\n--- Scan History ({len(history)} scans) ---")
+    for entry in history[-10:]:  # show last 10
+        print(f"{entry['timestamp']} | {entry['url']} | {entry['risk_level']} ({entry['risk_score']}/100)")
+    print()
+
+def export_report(result):
+    filename = f"linkguard_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(filename, "w") as f:
+        f.write("LINKGUARD SCAN REPORT\n")
+        f.write("=" * 40 + "\n")
+        f.write(f"URL: {result['url']}\n")
+        f.write(f"Scanned: {result['timestamp']}\n")
+        f.write(f"Risk Score: {result['risk_score']}/100 ({result['risk_level']})\n\n")
+        f.write("Findings:\n")
+        for reason in result["reasons"]:
+            f.write(f" - {reason}\n")
+    print(f"Report exported to {filename}\n")
+
+
+# ============ MAIN SCAN FUNCTION ============
+
+def scan_url(url):
+    domain = urlparse(url).netloc.replace("www.", "")
+
+    shortened = is_shortened_url(domain)
+    rep_flags = analyze_domain_reputation(domain)
+    vt_stats = check_virustotal(url)
+    gsb_matches = check_google_safe_browsing(url)
+    rules = load_custom_rules()
+    custom_flags = check_custom_rules(url, domain, rules)
+
+    score, level, reasons = calculate_risk_score(shortened, rep_flags, vt_stats, gsb_matches, custom_flags)
+
+    result = {
+        "url": url,
+        "domain": domain,
+        "timestamp": str(datetime.now()),
+        "risk_score": score,
+        "risk_level": level,
+        "reasons": reasons if reasons else ["No red flags detected"],
+        "virustotal": vt_stats,
+        "google_safe_browsing": gsb_matches
+    }
+
+    print(f"\n🔍 Scanning: {url}")
+    print(f"Risk Level: {level} ({score}/100)\n")
+    for reason in result["reasons"]:
+        print(f" - {reason}")
+    if vt_stats is None:
+        print(" (VirusTotal check skipped — no API key set)")
+    if gsb_matches is None:
+        print(" (Google Safe Browsing check skipped — no API key set)")
+    print()
+
+    save_to_history(result)
+    return result
+
+
+# ============ MENU ============
+
+def main():
+    while True:
+        print("=== LINKGUARD ===")
+        print("1. Scan a URL")
+        print("2. View scan history")
+        print("3. Export last scan report")
+        print("4. Add custom detection rule")
+        print("5. Exit")
+        choice = input("Choice: ").strip()
+
+        if choice == "1":
+            url = input("Enter URL to scan: ").strip()
+            last_result = scan_url(url)
+        elif choice == "2":
+            view_history()
+        elif choice == "3":
+            try:
+                export_report(last_result)
+            except NameError:
+                print("Scan a URL first before exporting.\n")
+        elif choice == "4":
+            add_custom_rule()
+        elif choice == "5":
+            break
+        else:
+            print("Invalid choice.\n")
+
+if __name__ == "__main__":
+    main()
